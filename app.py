@@ -309,12 +309,6 @@ elif st.session_state.step == 1:
         unsafe_allow_html=True
     )
 
-"
-        f"**Capacité d'endettement max (35%)** = **{capacite_endettement_max:,.0f} €**
-
-"
-        f"**Capacité de mensualité restante** = **{capacite_mensualite_restante:,.0f} €**"
-    )
 
     set_cell(df, 2, 2, salaire)
     set_cell(df, 3, 2, dec1)
