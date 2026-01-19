@@ -120,15 +120,45 @@ def send_email_smtp(
         server.login(smtp_user, smtp_password)
         server.send_message(msg)
 
+
+def eur(x: float) -> str:
+    """Format number as French-style euros: 12 345 € (no weird commas)."""
+    try:
+        x = float(x)
+    except Exception:
+        return str(x)
+    s = f"{x:,.0f}".replace(",", " ").replace(" ", " ")
+    return f"{s} €"
+
 # -------------------- UI --------------------
 st.markdown(
     """
     <style>
-    .block-container {padding-top: 1.5rem; padding-bottom: 2rem;}
-    .card {border:1px solid #e9e9e9; border-radius:16px; padding:18px; background:#fff;}
-    .muted {color:#6b7280;}
-    .pill {display:inline-block; padding:6px 10px; border-radius:999px; background:#f3f4f6; font-size:12px; margin-right:6px;}
-    </style>
+:root{
+  --bg:#f7f8fb;
+  --card:#ffffff;
+  --border:#e7eaf0;
+  --text:#0f172a;
+  --muted:#64748b;
+  --primary:#2563eb;
+  --primary2:#1d4ed8;
+  --success:#16a34a;
+  --warn:#f59e0b;
+}
+.block-container {padding-top: 1.25rem; padding-bottom: 2rem; background: var(--bg);}
+h1,h2,h3 {color: var(--text);}
+.card {border:1px solid var(--border); border-radius:18px; padding:18px; background:var(--card); box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);}
+.muted {color:var(--muted);}
+.pill {display:inline-block; padding:6px 10px; border-radius:999px; background:#eef2ff; color:#1e3a8a; font-size:12px; margin-right:6px; border:1px solid #e0e7ff;}
+.kpiwrap{display:flex; gap:12px; flex-wrap:wrap; margin-top:6px;}
+.kpi{flex:1; min-width:210px; border:1px solid var(--border); border-radius:16px; padding:14px; background: #ffffff;}
+.kpi .label{font-size:12px; color:var(--muted); margin-bottom:6px;}
+.kpi .value{font-size:22px; font-weight:800; color:var(--text);}
+.kpi.good .value{color: var(--success);}
+.kpi.warn .value{color: var(--warn);}
+.notice{border-left:6px solid var(--primary); background:#eff6ff; padding:12px 14px; border-radius:14px; color:#0b1b3a; border:1px solid #dbeafe;}
+.footerhint{font-size:12px;color:var(--muted);}
+</style>
     """,
     unsafe_allow_html=True
 )
@@ -218,6 +248,73 @@ elif st.session_state.step == 1:
         charges = st.number_input("Charges fixes / abonnements", value=float(get_cell(df, 16, 2, 0) or 0))
         essence = st.number_input("Essence", value=float(get_cell(df, 17, 2, 0) or 0))
         impots = st.number_input("Impôts", value=float(get_cell(df, 18, 2, 0) or 0))
+        autres_credits = st.number_input("Autres crédits (voiture, conso, etc.)", value=float(get_cell(df, 19, 2, 0) or 0))
+        loisirs_budget = st.number_input("Budget plaisirs / voyages (à réserver chaque mois)", value=float(get_cell(df, 20, 2, 0) or 0))
+    
+    # --- Calculs (reste à vivre + capacité d'emprunt) ---
+    salaires_total = float(get_cell(df, 2, 2, 0) or 0) + float(get_cell(df, 3, 2, 0) or 0) + float(get_cell(df, 4, 2, 0) or 0)
+    loyers_total = float(get_cell(df, 7, 2, 0) or 0) + float(get_cell(df, 8, 2, 0) or 0)
+    loyers_retenus = loyers_total * 0.80  # UNE seule décote, pas de double 20%
+    
+    revenus_retenus = salaires_total + loyers_retenus
+    charges_hors_credits = float(get_cell(df, 16, 2, 0) or 0) + float(get_cell(df, 17, 2, 0) or 0) + float(get_cell(df, 18, 2, 0) or 0)
+    credits_existants = float(get_cell(df, 13, 2, 0) or 0) + autres_credits
+    reste_a_vivre = revenus_retenus - (charges_hors_credits + credits_existants)
+    reste_apres_loisirs = reste_a_vivre - loisirs_budget
+    
+    capacite_endettement_max = revenus_retenus * 0.35
+    capacite_mensualite_restante = max(0.0, capacite_endettement_max - credits_existants)
+    
+    
+    st.markdown("### Résultats (en direct)")
+
+    # KPI cards
+    st.markdown(
+        f"""
+        <div class="notice"><b>Lecture simple :</b> on prend les salaires à 100% + les loyers à 80% (une seule décote),
+        puis on retire charges et crédits existants. La capacité d'emprunt est calculée avec un taux d'endettement de 35%.</div>
+        <div class="kpiwrap">
+          <div class="kpi">
+            <div class="label">Revenus retenus</div>
+            <div class="value">{eur(revenus_retenus)}</div>
+            <div class="footerhint">Salaires 100% + Loyers 80%</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Charges + crédits existants</div>
+            <div class="value">{eur(charges_hors_credits + credits_existants)}</div>
+            <div class="footerhint">Charges fixes + mensualités en cours</div>
+          </div>
+          <div class="kpi {'good' if reste_a_vivre>=0 else 'warn'}">
+            <div class="label">Reste à vivre</div>
+            <div class="value">{eur(reste_a_vivre)}</div>
+            <div class="footerhint">Avant budget plaisirs</div>
+          </div>
+          <div class="kpi {'good' if reste_apres_loisirs>=0 else 'warn'}">
+            <div class="label">Épargne possible</div>
+            <div class="value">{eur(reste_apres_loisirs)}</div>
+            <div class="footerhint">Reste à vivre - plaisirs/voyages</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Capacité d'endettement max (35%)</div>
+            <div class="value">{eur(capacite_endettement_max)}</div>
+            <div class="footerhint">Mensualités totales max</div>
+          </div>
+          <div class="kpi good">
+            <div class="label">Capacité de mensualité restante</div>
+            <div class="value">{eur(capacite_mensualite_restante)}</div>
+            <div class="footerhint">Ce qu'il reste pour un nouveau crédit</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+"
+        f"**Capacité d'endettement max (35%)** = **{capacite_endettement_max:,.0f} €**
+
+"
+        f"**Capacité de mensualité restante** = **{capacite_mensualite_restante:,.0f} €**"
+    )
 
     set_cell(df, 2, 2, salaire)
     set_cell(df, 3, 2, dec1)
@@ -230,6 +327,8 @@ elif st.session_state.step == 1:
     set_cell(df, 16, 2, charges)
     set_cell(df, 17, 2, essence)
     set_cell(df, 18, 2, impots)
+    set_cell(df, 19, 2, autres_credits)
+    set_cell(df, 20, 2, loisirs_budget)
 
     st.write("")
     cprev, cnext = st.columns([1,1])
