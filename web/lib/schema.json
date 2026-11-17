@@ -1,0 +1,114 @@
+{
+  "identity": [
+    {
+      "key": "nom",
+      "label": "Nom",
+      "type": "text"
+    },
+    {
+      "key": "prenom",
+      "label": "Prénom",
+      "type": "text"
+    },
+    {
+      "key": "date_naissance",
+      "label": "Date de naissance",
+      "type": "date"
+    },
+    {
+      "key": "lieu_naissance",
+      "label": "Lieu de naissance",
+      "type": "text"
+    },
+    {
+      "key": "adresse",
+      "label": "Adresse",
+      "type": "text"
+    },
+    {
+      "key": "tel",
+      "label": "Téléphone",
+      "type": "tel"
+    },
+    {
+      "key": "mail",
+      "label": "Email",
+      "type": "email"
+    },
+    {
+      "key": "situation_fam",
+      "label": "Situation familiale",
+      "type": "text"
+    },
+    {
+      "key": "parts",
+      "label": "Nombre de parts",
+      "type": "number"
+    }
+  ],
+  "budget": [
+    {
+      "key": "dec1",
+      "label": "Déclarant 1 - salaire"
+    },
+    {
+      "key": "dec2",
+      "label": "Déclarant 2 - salaire"
+    },
+    {
+      "key": "bien1",
+      "label": "Bien n°1 - loyer hors charges avant décote"
+    },
+    {
+      "key": "bien2",
+      "label": "Bien n°2 - loyer hors charges avant décote"
+    },
+    {
+      "key": "emprunt_rp",
+      "label": "Emprunt RP / loyer"
+    },
+    {
+      "key": "charges",
+      "label": "Charges fixes / abonnements (hors essence et impôts)"
+    },
+    {
+      "key": "essence",
+      "label": "Essence"
+    },
+    {
+      "key": "impots",
+      "label": "Impôts"
+    },
+    {
+      "key": "autres_credits",
+      "label": "Autres crédits (voiture, conso, etc.)"
+    },
+    {
+      "key": "loisirs_budget",
+      "label": "Budget plaisirs / voyages"
+    }
+  ],
+  "categories": [
+    "SICAV ou FCP",
+    "Obligations",
+    "Actions",
+    "Trackers - fonds alternatifs",
+    "Warrants - Futurs - Options",
+    "Gestion directe ou personnelle",
+    "Gestion déléguée ou sous mandat",
+    "Fonds euros",
+    "Supports unités de compte",
+    "SCPI",
+    "OPCI",
+    "FCPI",
+    "FIP"
+  ],
+  "metrics": {
+    "revenus_retenus": "Revenus retenus",
+    "charges_et_credits": "Charges + crédits existants",
+    "reste_a_vivre": "Reste à vivre",
+    "reste_apres_loisirs": "Épargne possible",
+    "capacite_endettement_max": "Capacité d'endettement max (35 %)",
+    "capacite_mensualite_restante": "Capacité de mensualité restante"
+  }
+}
