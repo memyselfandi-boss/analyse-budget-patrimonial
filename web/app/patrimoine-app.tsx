@@ -1,0 +1,68 @@
+'use client';
+import {useEffect,useRef,useState} from 'react';
+import {ChevronLeft,ChevronRight,Check,Plus,FolderOpen,Download,ShieldCheck,Search,Save,Trash2,FlaskConical,Loader2,Menu,X} from 'lucide-react';
+import {schema,emptyClient,calculateBudget,sections} from '../lib/budget.mjs';
+import demo from '../lib/demo.json';
+
+const steps=['Identité','Budget','Profil financier','Synthèse'];
+const euro=(n:number)=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(n);
+type Dossier={id:string;data:any;version:number;dirty:boolean};
+export default function PatrimoineApp(){
+ const [current,setCurrent]=useState<Dossier|null>(null),ref=useRef<Dossier|null>(null);
+ const [step,setStep]=useState(0),[list,setList]=useState<any[]>([]),[filter,setFilter]=useState('');
+ const [drawer,setDrawer]=useState(false),[status,setStatus]=useState('Nouveau dossier'),[error,setError]=useState('');
+ const [busy,setBusy]=useState(false),[exporting,setExporting]=useState('');
+ const inFlight=useRef<Promise<void>|null>(null),saveRef=useRef<()=>Promise<void>>(async()=>{});
+ function replace(next:Dossier){ref.current=next;setCurrent(next);}
+ async function api(url:string,options:RequestInit={}){const r=await fetch(url,{...options,cache:'no-store',headers:{'Content-Type':'application/json',...options.headers}});if(!r.ok){let body:any;try{body=await r.json();}catch{}throw Error(body?.error||'Connexion impossible. Réessaie.');}return r;}
+ async function refresh(){const r=await api('/api/dossiers');setList(((await r.json()) as any).dossiers);}
+ async function save(){
+  if(inFlight.current)await inFlight.current;
+  const file=ref.current;if(!file||!file.dirty)return;
+  if(!file.data.nom.trim()&&!file.data.prenom.trim()){setStatus('Renseigne un nom pour sauvegarder');return;}
+  const signature=JSON.stringify(file.data);setStatus('Enregistrement…');setError('');
+  const task=(async()=>{
+   const r=await api(`/api/dossiers/${file.id}`,{method:'PUT',body:JSON.stringify({data:file.data,version:file.version})});
+   const result:any=await r.json();const latest=ref.current;
+   if(latest?.id===file.id){const dirty=JSON.stringify(latest.data)!==signature;replace({...latest,version:result.version,dirty});setStatus(dirty?'Modifications à enregistrer':'Enregistré');}
+   await refresh();
+  })();inFlight.current=task;
+  try{await task;}catch(e:any){setStatus('Non enregistré');setError(e.message);throw e;}finally{inFlight.current=null;}
+ }
+ saveRef.current=save;
+ useEffect(()=>{replace({id:crypto.randomUUID(),data:emptyClient(),version:0,dirty:false});refresh().catch((e)=>setError(e.message));},[]);
+ useEffect(()=>{if(!current?.dirty)return;const timer=setTimeout(()=>saveRef.current().catch(()=>{}),900);return()=>clearTimeout(timer);},[current?.data]);
+ useEffect(()=>{const warn=(e:BeforeUnloadEvent)=>{if(ref.current?.dirty){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[]);
+ function change(key:string,value:any){const file=ref.current;if(!file)return;replace({...file,data:{...file.data,[key]:value},dirty:true});setStatus('Modifications à enregistrer');}
+ async function beforeSwitch(){const f=ref.current;if(f?.dirty){if(f.data.nom.trim()||f.data.prenom.trim()){await save();}else if(!window.confirm('Ce dossier sans nom ne peut pas être sauvegardé. Quitter et abandonner la saisie ?'))throw Error('Saisie conservée.');}}
+ async function newFile(fictif=false){try{await beforeSwitch();replace({id:crypto.randomUUID(),data:fictif?structuredClone(demo):emptyClient(),version:0,dirty:fictif});setStep(0);setError('');setStatus(fictif?'Exemple à enregistrer':'Nouveau dossier');setDrawer(false);}catch(e:any){setError(e.message);}}
+ async function open(id:string){setBusy(true);try{await beforeSwitch();const r=await api(`/api/dossiers/${id}`);const file:any=await r.json();replace({...file,dirty:false});setStep(0);setStatus('Dossier chargé');setError('');setDrawer(false);}catch(e:any){setError(e.message);}finally{setBusy(false);}}
+ async function remove(){const file=ref.current;if(!file?.version)return;if(!window.confirm('Supprimer définitivement ce dossier enregistré ?'))return;try{if(inFlight.current)await inFlight.current;const latest=ref.current!;await api(`/api/dossiers/${latest.id}`,{method:'DELETE',body:JSON.stringify({version:latest.version})});replace({id:crypto.randomUUID(),data:emptyClient(),version:0,dirty:false});setStep(0);setStatus('Dossier supprimé');setError('');await refresh();}catch(e:any){setError(e.message);}}
+ async function download(format:string){setExporting(format);setError('');try{await save();const r=await api('/api/exports',{method:'POST',body:JSON.stringify({data:ref.current!.data,format})});const url=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=url;a.download=`analyse_patrimoniale.${format}`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}catch(e:any){setError(e.message);}finally{setExporting('');}}
+ async function copy(){const f=ref.current;if(!f)return;if(inFlight.current){try{await inFlight.current;}catch{}}replace({id:crypto.randomUUID(),data:structuredClone(f.data),version:0,dirty:true});setError('');setStatus('Copie à enregistrer');}
+ if(!current)return <div className="loading"><Loader2 className="spin"/> Ouverture de ton espace privé…</div>;
+ const data=current.data,budget=calculateBudget(data);
+ const numeric=(f:any)=> <label className="field" key={f.key}><span>{f.label}</span><div className="amount"><input aria-label={f.label} type="number" inputMode="decimal" min="0" step="0.01" value={data[f.key]===0?'':data[f.key]} placeholder="0" onChange={e=>change(f.key,e.target.value===''?0:Number(e.target.value))}/><span>€ / mois</span></div></label>;
+ return <div className="app-shell">
+  <header className="topbar"><a href="/" className="brand" aria-label="CL Conseils accueil"><svg viewBox="0 0 28 32" aria-hidden="true"><path d="M2 5 14 0 26 5 14 11Z M2 15 14 9 26 15 14 21Z M2 25 14 19 26 25 14 32Z"/></svg><div>CL CONSEILS<small>IMMOBILIER & PATRIMOINE</small></div></a><div className="private"><ShieldCheck size={16}/> Espace privé</div><button className="icon mobile-menu" aria-label="Mes dossiers" onClick={()=>setDrawer(!drawer)}>{drawer?<X/>:<Menu/>}</button></header>
+  <div className="workspace">
+   <aside className={`sidebar ${drawer?'shown':''}`}><div className="side-heading"><span>MES DOSSIERS</span><span className="count">{list.length}</span></div><button className="primary full" onClick={()=>newFile()}><Plus size={18}/> Nouveau dossier</button><div className="search"><Search size={17}/><input aria-label="Rechercher un dossier" placeholder="Rechercher un client" value={filter} onChange={e=>setFilter(e.target.value)}/></div><div className="file-list">{list.filter(f=>f.name.toLowerCase().includes(filter.toLowerCase())).map(f=><button key={f.id} className={`file ${current.id===f.id?'active':''}`} onClick={()=>open(f.id)} disabled={busy}><FolderOpen size={19}/><span><strong>{f.name}</strong><small>{new Date(f.updated_at).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})}</small></span></button>)}{!list.length&&<p className="empty-list">Tes dossiers enregistrés apparaîtront ici.</p>}</div><div className="side-bottom"><button className="ghost full" onClick={()=>newFile(true)}><FlaskConical size={17}/> Essayer avec un client fictif</button><p><ShieldCheck size={14}/> Dossiers rattachés à ton compte.<br/>Retrouve-les sur tes autres appareils.</p></div></aside>
+   <main>
+    <div className="page-heading"><div><span className="eyebrow">CONSEIL PATRIMONIAL</span><h1>Une vision claire de ton patrimoine.</h1><p>Renseigne la situation du client, puis retrouve sa synthèse et ses documents.</p></div></div>
+    <div className="document-bar"><div><span className="doc-label">DOSSIER CLIENT</span><strong>{[data.prenom,data.nom].filter(Boolean).join(' ')||'Nouveau dossier'}</strong></div><div className={`save-state ${error?'has-error':''}`} role="status">{status==='Enregistrement…'?<Loader2 size={15} className="spin"/>:status==='Enregistré'||status==='Dossier chargé'?<Check size={15}/>:<span className="dot"/>}{status}</div><button className="secondary save-button" onClick={()=>save().catch(()=>{})}><Save size={16}/><span>Enregistrer</span></button></div>
+    {error&&<div className="error" role="alert"><strong>{error}</strong><div><button onClick={()=>save().catch(()=>{})}>Réessayer</button><button onClick={copy}>Sauvegarder une copie</button></div></div>}
+    <nav className="steps" aria-label="Étapes du dossier">{steps.map((title,i)=><button key={title} className={`${step===i?'selected':''} ${step>i?'done':''}`} aria-current={step===i?'step':undefined} onClick={()=>setStep(i)}><span>{step>i?<Check size={14}/>:i+1}</span><b>{title}</b></button>)}</nav>
+    <section className="card">
+     <div className="section-heading"><span className="section-number">0{step+1}</span><div><h2>{['Faisons connaissance','Le budget mensuel','Connaissances & expérience','La synthèse du dossier'][step]}</h2><p>{['Les coordonnées et la situation familiale du client.','Des montants mensuels pour une lecture simple et cohérente.','Indique les supports connus ou déjà expérimentés.','Vérifie les informations et télécharge les documents.'][step]}</p></div></div>
+     {step===0&&<div className="fields">{schema.identity.map((f:any)=><label className={`field ${f.key==='adresse'?'wide':''}`} key={f.key}><span>{f.label}</span><input aria-label={f.label} type={f.type} inputMode={f.type==='number'?'decimal':undefined} min={f.type==='date'?'1900-01-01':f.type==='number'?0:undefined} max={f.type==='date'?new Date().toISOString().slice(0,10):undefined} step={f.type==='number'?0.5:undefined} maxLength={500} autoComplete="off" value={data[f.key]===0?'':data[f.key]} onChange={e=>change(f.key,f.type==='number'?(Number(e.target.value)||0):e.target.value)} placeholder={f.key==='nom'?'Nom du client':f.key==='tel'?'06 00 00 00 00':f.key==='mail'?'client@exemple.fr':''}/></label>)}</div>}
+     {step===1&&<><h3 className="group-title">Revenus du foyer</h3><div className="fields">{schema.budget.slice(0,4).map(numeric)}</div><div className="totals"><span>Total salaires <b>{euro(budget.salaire)}</b></span><span>Loyers retenus à 80 % <b>{euro(budget.rev_loc)}</b></span></div><h3 className="group-title">Dépenses & engagements</h3><label className="toggle-row"><span>Souscripteur de crédits ?</span><input aria-label="Souscripteur de crédits ?" type="checkbox" checked={!!data.credit_flag} onChange={e=>change('credit_flag',e.target.checked?1:0)}/></label><div className="fields">{schema.budget.slice(4).map(numeric)}</div><p className="note">Les charges fixes excluent l’essence et les impôts. Saisis les loyers avant décote : les 80 % sont appliqués automatiquement une seule fois.</p></>}
+     {step===2&&<div className="profile-grid">{schema.categories.map((cat:string)=><label className={`profile-option ${data.experience[cat]?'checked':''}`} key={cat}><input type="checkbox" checked={data.experience[cat]} onChange={e=>change('experience',{...data.experience,[cat]:e.target.checked})}/><span>{cat}</span><b>{data.experience[cat]?'Oui':'Non'}</b></label>)}</div>}
+     {step===3&&<><div className="export-banner"><div><h3>Ton dossier, prêt à partager.</h3><p>Les deux documents reprennent toutes les informations saisies et les indicateurs.</p></div><div className="export-buttons"><button className="primary" disabled={!!exporting} onClick={()=>download('pdf')}><Download size={17}/>{exporting==='pdf'?'Préparation…':'Document PDF'}</button><button className="secondary" disabled={!!exporting} onClick={()=>download('xlsx')}><Download size={17}/>{exporting==='xlsx'?'Préparation…':'Tableau Excel'}</button></div></div><div className="review">{sections(data).map(([title,rows]:any)=><details key={title} open={title==='Identité'}><summary>{title}</summary><dl>{rows.map(([label,value]:any)=><div key={label}><dt>{label}</dt><dd>{typeof value==='number'?value.toLocaleString('fr-FR'):value||'—'}</dd></div>)}</dl></details>)}</div><p className="note">L’Excel est un instantané des informations et des calculs. Les résultats restent indicatifs et ne constituent pas un accord de financement.</p></>}
+    </section>
+    {(step===1||step===3)&&<section className="indicators" aria-label="Indicateurs budgétaires">{Object.entries(schema.metrics).map(([key,label])=><div key={key} className={`metric ${['reste_apres_loisirs','capacite_mensualite_restante'].includes(key)?'featured':''} ${budget[key]<0?'negative':''}`}><span>{label as string}</span><strong>{euro(budget[key])}</strong><small>{key==='capacite_mensualite_restante'?'Sur une base indicative de 35 %':key==='reste_apres_loisirs'?'Après budget plaisirs / voyages':'Montant mensuel'}</small></div>)}</section>}
+    <footer className="navigation"><button className="ghost" disabled={step===0} onClick={()=>{setStep(step-1);window.scrollTo({top:0,behavior:'smooth'});}}><ChevronLeft size={18}/> Retour</button><span>Étape {step+1} sur 4</span>{step<3?<button className="primary" onClick={()=>{setStep(step+1);window.scrollTo({top:0,behavior:'smooth'});}}>Continuer <ChevronRight size={18}/></button>:<button className="primary" onClick={()=>save().catch(()=>{})}><Save size={17}/> Enregistrer</button>}</footer>
+    <div className="page-foot"><span><ShieldCheck size={14}/> Accès privé · Enregistrement dans ton espace</span>{current.version>0&&<button className="delete" onClick={remove}><Trash2 size={14}/> Supprimer ce dossier</button>}</div>
+   </main>
+  </div>
+ </div>;
+}
